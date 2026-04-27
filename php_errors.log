@@ -1,0 +1,30 @@
+[14-Apr-2026 13:30:27 Europe/Berlin] PHP Warning:  require_once(C:\xampp\htdocs\papi\models/../../config/constants.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:27 Europe/Berlin] PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\papi\models/../../config/constants.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\papi\models\RegistrationRequest.php:9
+Stack trace:
+#0 C:\xampp\htdocs\papi\views\asset\request.php(5): require_once()
+#1 {main}
+  thrown in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:28 Europe/Berlin] PHP Warning:  require_once(C:\xampp\htdocs\papi\models/../../config/constants.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:28 Europe/Berlin] PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\papi\models/../../config/constants.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\papi\models\RegistrationRequest.php:9
+Stack trace:
+#0 C:\xampp\htdocs\papi\views\asset\request.php(5): require_once()
+#1 {main}
+  thrown in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:51 Europe/Berlin] PHP Warning:  require_once(C:\xampp\htdocs\papi\models/../../config/constants.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:51 Europe/Berlin] PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\papi\models/../../config/constants.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\papi\models\RegistrationRequest.php:9
+Stack trace:
+#0 C:\xampp\htdocs\papi\views\asset\request.php(5): require_once()
+#1 {main}
+  thrown in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:53 Europe/Berlin] PHP Warning:  require_once(C:\xampp\htdocs\papi\models/../../config/constants.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:53 Europe/Berlin] PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\papi\models/../../config/constants.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\papi\models\RegistrationRequest.php:9
+Stack trace:
+#0 C:\xampp\htdocs\papi\views\asset\request.php(5): require_once()
+#1 {main}
+  thrown in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:54 Europe/Berlin] PHP Warning:  require_once(C:\xampp\htdocs\papi\models/../../config/constants.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9
+[14-Apr-2026 13:30:54 Europe/Berlin] PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\papi\models/../../config/constants.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\papi\models\RegistrationRequest.php:9
+Stack trace:
+#0 C:\xampp\htdocs\papi\views\asset\request.php(5): require_once()
+#1 {main}
+  thrown in C:\xampp\htdocs\papi\models\RegistrationRequest.php on line 9

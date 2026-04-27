@@ -1,0 +1,834 @@
+<?php
+// Start session to check if user is logged in
+session_start();
+
+// If user is already logged in, redirect to appropriate dashboard
+if (isset($_SESSION['user_id'])) {
+    if ($_SESSION['user_role'] == 'admin') {
+        header('Location: views/admin/dashboard.php');
+        exit();
+    } elseif ($_SESSION['user_role'] == 'security') {
+        header('Location: views/security/dashboard.php');
+        exit();
+    } else {
+        header('Location: views/user/dashboard.php');
+        exit();
+    }
+}
+
+// Include database connection for public content
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/config/constants.php';
+
+// Get database connection
+try {
+    $database = new Database();
+    $db = $database->getConnection();
+} catch (Exception $e) {
+    $db = null;
+}
+
+// Get public lost items (only those marked as public)
+$public_lost_items = [];
+$public_general_lost = [];
+$public_found_items = [];
+
+if ($db) {
+    try {
+        // Get asset lost items that are public (public_visibility = 1)
+        $lost_query = "SELECT l.*, a.brand, a.model, a.serial_number, a.asset_image,
+                       u.full_name as owner_name, u.university_id, u.email, u.phone_number
+                       FROM lost_reports l
+                       JOIN assets a ON l.asset_id = a.asset_id
+                       JOIN users u ON a.user_id = u.user_id
+                       WHERE l.status IN ('pending', 'investigating') 
+                       AND l.public_visibility = 1
+                       ORDER BY l.reported_date DESC
+                       LIMIT 10";
+        $lost_stmt = $db->prepare($lost_query);
+        $lost_stmt->execute();
+        $public_lost_items = $lost_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $public_lost_items = [];
+        error_log("Error fetching asset lost items: " . $e->getMessage());
+    }
+
+    try {
+        // Get general lost items from 'lost_items' table
+        $general_query = "SELECT * FROM lost_items 
+                         WHERE lost_type = 'general'
+                         AND status IN ('pending', 'approved')
+                         AND public_visibility = 1
+                         ORDER BY reported_date DESC
+                         LIMIT 10";
+        $general_stmt = $db->prepare($general_query);
+        $general_stmt->execute();
+        $public_general_lost = $general_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $public_general_lost = [];
+        error_log("Error fetching general lost items: " . $e->getMessage());
+    }
+
+    try {
+        // Get found items (these are always public to help owners find them)
+        $found_query = "SELECT f.*, a.brand, a.model, a.serial_number, a.asset_image,
+                        u.full_name as owner_name
+                        FROM found_reports f
+                        JOIN assets a ON f.asset_id = a.asset_id
+                        JOIN users u ON a.user_id = u.user_id
+                        WHERE f.status = 'pending'
+                        ORDER BY f.found_date DESC
+                        LIMIT 10";
+        $found_stmt = $db->prepare($found_query);
+        $found_stmt->execute();
+        $public_found_items = $found_stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $public_found_items = [];
+        error_log("Error fetching found items: " . $e->getMessage());
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PEARTS - Jimma University Asset Tracking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Hide scrollbar for Chrome, Safari and Edge */
+        body::-webkit-scrollbar {
+            display: none;
+        }
+        
+        /* Hide scrollbar for Firefox */
+        body {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        /* Main Container - Two Column Layout */
+        .main-wrapper {
+            display: flex;
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Left Side - Main Content */
+        .main-content {
+            flex: 1;
+            padding: 40px;
+        }
+
+        /* Right Side - Lost & Found Panel - FIXED STYLES TO MATCH LEFT SIDE */
+        .lost-found-panel {
+            width: 420px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            border-radius: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.2);
+            padding: 40px;
+            margin: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .panel-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .panel-title i {
+            font-size: 1.6rem;
+        }
+
+        /* Lost Item Cards */
+        .lost-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border-left: 4px solid #dc3545;
+        }
+
+        .lost-card:hover {
+            transform: translateX(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .general-card {
+            border-left-color: #ffc107;
+        }
+
+        .found-card {
+            border-left-color: #28a745;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #333;
+            margin: 0;
+        }
+
+        .status-badge {
+            font-size: 0.65rem;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-approved {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-investigating {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .card-info {
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-info i {
+            width: 18px;
+            color: #667eea;
+            font-size: 0.75rem;
+        }
+
+        .card-owner {
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid #eee;
+            font-size: 0.7rem;
+            color: #999;
+        }
+
+        .no-items {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            padding: 30px 15px;
+        }
+
+        .no-items i {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+
+        /* Login/Signup Buttons */
+        .auth-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        
+        .btn-login {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            color: #667eea;
+        }
+        
+        .btn-signup {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-signup:hover {
+            background: white;
+            color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        /* Glassmorphism Card */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            border-radius: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.2);
+            padding: 40px;
+            max-width: 100%;
+            width: 100%;
+            animation: fadeInUp 0.8s ease;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Logo */
+        .logo-wrapper {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .logo-icon {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .logo-icon i {
+            font-size: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #e0e0ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+
+        .university-name {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        /* Animated Text Container */
+        .animated-text-container {
+            margin: 20px auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 60px;
+            padding: 12px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(5px);
+        }
+
+        .static-text {
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-right: 8px;
+            font-weight: 500;
+        }
+
+        .animated-text {
+            font-size: 1.1rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #ffd89b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            min-width: 300px;
+            text-align: center;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2rem;
+            background: linear-gradient(135deg, #fff 0%, #ffd89b 100%);
+            margin-left: 5px;
+            animation: blink 1s infinite;
+            border-radius: 2px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .feature-item {
+            text-align: center;
+            padding: 12px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-3px);
+        }
+
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 8px;
+            color: white;
+            font-size: 1rem;
+        }
+
+        .feature-item h4 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: white;
+        }
+
+        .feature-item p {
+            font-size: 0.65rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.7rem;
+        }
+
+        /* View All Link */
+        .view-all-link {
+            text-align: center;
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .view-all-link a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            font-size: 0.8rem;
+        }
+
+        .view-all-link a:hover {
+            color: white;
+            text-decoration: underline;
+        }
+
+        /* Particle Background */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: floatParticle linear infinite;
+        }
+
+        @keyframes floatParticle {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .main-wrapper {
+                flex-direction: column;
+            }
+            
+            .lost-found-panel {
+                width: auto;
+                margin: 20px;
+                position: relative;
+                border-left: none;
+                border-top: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .glass-card {
+                padding: 30px 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .animated-text-container {
+                flex-direction: column;
+                padding: 12px;
+            }
+            
+            .static-text {
+                margin-right: 0;
+                margin-bottom: 6px;
+            }
+            
+            .animated-text {
+                font-size: 0.9rem;
+                min-width: auto;
+            }
+            
+            .auth-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Particle Background -->
+    <div class="particles" id="particles"></div>
+
+    <div class="main-wrapper">
+        <!-- Left Side - Main Content -->
+        <div class="main-content">
+            <div class="glass-card">
+                <!-- Logo -->
+                <div class="logo-wrapper">
+                    <div class="logo-icon">
+                        <i class="bi bi-shield-lock"></i>
+                    </div>
+                    <h1>PEARTS</h1>
+                    <div class="university-name">Jimma University</div>
+                </div>
+
+                <!-- Animated Text Section -->
+                <div class="animated-text-container">
+                    <span class="static-text">Welcome to</span>
+                    <span class="animated-text" id="animatedText"></span>
+                    <span class="cursor">|</span>
+                </div>
+
+                <!-- Login/Signup Buttons -->
+                <div class="auth-buttons">
+                    <a href="views/auth/login.php" class="btn-login">
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </a>
+                    <a href="views/auth/register.php" class="btn-signup">
+                        <i class="bi bi-person-plus"></i> Sign Up
+                    </a>
+                </div>
+
+                <!-- Features Grid -->
+                <div class="features-grid">
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="bi bi-laptop"></i>
+                        </div>
+                        <h4>Asset Registration</h4>
+                        <p>Register devices with QR codes</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="bi bi-qr-code-scan"></i>
+                        </div>
+                        <h4>QR Code Tracking</h4>
+                        <p>Quick entry/exit scanning</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">
+                            <i class="bi bi-search"></i>
+                        </div>
+                        <h4>Lost & Found</h4>
+                        <p>Report and track lost items</p>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="footer">
+                    <p>© 2026 Jimma University - PEARTS. All rights reserved.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side - Lost & Found Panel -->
+        <div class="lost-found-panel">
+            <!-- Lost Items Section -->
+            <div class="panel-title">
+                <i class="bi bi-exclamation-triangle text-danger"></i>
+                <span>Recently Lost Items</span>
+            </div>
+
+            <?php if (empty($public_lost_items) && empty($public_general_lost)): ?>
+                <div class="no-items">
+                    <i class="bi bi-inbox"></i>
+                    <p>No lost items reported publicly</p>
+                    <small>Items only appear here when owners choose to make them public</small>
+                </div>
+            <?php else: ?>
+                <!-- Asset Lost Items (Public) -->
+                <?php foreach ($public_lost_items as $item): ?>
+                    <div class="lost-card" onclick="window.location.href='views/lost/public_view.php?id=<?php echo $item['lost_id']; ?>&type=asset'">
+                        <div class="card-header">
+                            <div class="card-title"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
+                            <span class="status-badge status-<?php echo $item['status']; ?>">
+                                <?php echo ucfirst($item['status']); ?>
+                            </span>
+                        </div>
+                        <div class="card-info">
+                            <i class="bi bi-upc-scan"></i>
+                            <span>Serial: <?php echo htmlspecialchars($item['serial_number']); ?></span>
+                        </div>
+                        <div class="card-info">
+                            <i class="bi bi-geo-alt"></i>
+                            <span>Last seen: <?php echo htmlspecialchars($item['last_seen_location']); ?></span>
+                        </div>
+                        <div class="card-info">
+                            <i class="bi bi-calendar"></i>
+                            <span>Reported: <?php echo date('d M Y', strtotime($item['reported_date'])); ?></span>
+                        </div>
+                        <div class="card-owner">
+                            <i class="bi bi-person"></i> Owner: <?php echo htmlspecialchars($item['owner_name']); ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+
+                <!-- General Lost Items (Public) -->
+                <?php foreach ($public_general_lost as $item): ?>
+                    <div class="lost-card general-card" onclick="window.location.href='views/lost/public_view.php?id=<?php echo $item['id']; ?>&type=general'">
+                        <div class="card-header">
+                            <div class="card-title"><?php echo htmlspecialchars($item['item_type']); ?></div>
+                            <span class="status-badge status-<?php echo $item['status']; ?>">
+                                <?php echo ucfirst($item['status']); ?>
+                            </span>
+                        </div>
+                        <div class="card-info">
+                            <i class="bi bi-info-circle"></i>
+                            <span><?php echo htmlspecialchars(substr($item['item_description'], 0, 40)); ?></span>
+                        </div>
+                        <?php if (!empty($item['brand'])): ?>
+                        <div class="card-info">
+                            <i class="bi bi-tag"></i>
+                            <span>Brand: <?php echo htmlspecialchars($item['brand']); ?></span>
+                        </div>
+                        <?php endif; ?>
+                        <div class="card-info">
+                            <i class="bi bi-geo-alt"></i>
+                            <span>Last seen: <?php echo htmlspecialchars($item['last_seen_location']); ?></span>
+                        </div>
+                        <div class="card-info">
+                            <i class="bi bi-calendar"></i>
+                            <span>Reported: <?php echo date('d M Y', strtotime($item['reported_date'])); ?></span>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+            <!-- Found Items Section -->
+            <?php if (!empty($public_found_items)): ?>
+            <div class="panel-title mt-3">
+                <i class="bi bi-check-circle text-success"></i>
+                <span>Recently Found Items</span>
+            </div>
+
+            <?php foreach ($public_found_items as $item): ?>
+                <div class="lost-card found-card" onclick="window.location.href='views/found/public_view.php?id=<?php echo $item['found_id']; ?>'">
+                    <div class="card-header">
+                        <div class="card-title"><?php echo htmlspecialchars($item['brand'] . ' ' . $item['model']); ?></div>
+                        <span class="status-badge status-pending">Pending Claim</span>
+                    </div>
+                    <div class="card-info">
+                        <i class="bi bi-upc-scan"></i>
+                        <span>Serial: <?php echo htmlspecialchars($item['serial_number']); ?></span>
+                    </div>
+                    <div class="card-info">
+                        <i class="bi bi-geo-alt"></i>
+                        <span>Found at: <?php echo htmlspecialchars($item['found_location']); ?></span>
+                    </div>
+                    <div class="card-info">
+                        <i class="bi bi-calendar"></i>
+                        <span>Found on: <?php echo date('d M Y', strtotime($item['found_date'])); ?></span>
+                    </div>
+                    <div class="card-info">
+                        <i class="bi bi-building"></i>
+                        <span>Stored at: <?php echo htmlspecialchars($item['storage_location'] ?? 'Security Office'); ?></span>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+
+            <!-- View All Link -->
+            <div class="view-all-link">
+                <a href="public-lost-items.php">
+                    <i class="bi bi-arrow-right-circle"></i> View All Public Lost Items
+                </a>
+            </div>
+
+            <div class="text-center mt-2">
+                <small class="text-white-50" style="font-size: 0.7rem;">
+                    <i class="bi bi-info-circle"></i> Only items marked as "Public" by owners are shown here
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Typewriter Effect
+        document.addEventListener('DOMContentLoaded', function() {
+            const fullText = "Personal Electronic Asset Registration and Tracking System";
+            const animatedText = document.getElementById('animatedText');
+            let charIndex = 0;
+            let isDeleting = false;
+            
+            function typeWriter() {
+                if (isDeleting) {
+                    animatedText.innerHTML = fullText.substring(0, charIndex - 1);
+                    charIndex--;
+                    
+                    if (charIndex === 0) {
+                        isDeleting = false;
+                        setTimeout(typeWriter, 500);
+                        return;
+                    }
+                } else {
+                    animatedText.innerHTML = fullText.substring(0, charIndex + 1);
+                    charIndex++;
+                    
+                    if (charIndex === fullText.length) {
+                        isDeleting = true;
+                        setTimeout(typeWriter, 3000);
+                        return;
+                    }
+                }
+                
+                const speed = isDeleting ? 50 : 100;
+                setTimeout(typeWriter, speed);
+            }
+            
+            setTimeout(typeWriter, 500);
+        });
+
+        // Particle Background Animation
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 50;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('particle');
+                
+                const size = Math.random() * 5 + 2;
+                const left = Math.random() * 100;
+                const duration = Math.random() * 15 + 8;
+                const delay = Math.random() * 10;
+                
+                particle.style.width = size + 'px';
+                particle.style.height = size + 'px';
+                particle.style.left = left + '%';
+                particle.style.animationDuration = duration + 's';
+                particle.style.animationDelay = delay + 's';
+                particle.style.opacity = Math.random() * 0.4 + 0.1;
+                
+                particlesContainer.appendChild(particle);
+            }
+        }
+        
+        createParticles();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
